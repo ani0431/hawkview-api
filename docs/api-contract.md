@@ -4,11 +4,13 @@
 http://localhost:3000
 
 ## Authentication Model
-HawkView uses cookie-based authentication.
+HawkView uses cookie-based authentication with short-lived access tokens and rotating refresh tokens.
 
-Cookie:
-- Name: access_token
-- Type: httpOnly
+Cookies (both httpOnly, sameSite=lax, secure in production):
+- access_token — signed JWT, 15-minute TTL, path `/`
+- refresh_token — opaque random token (SHA-256 hash stored in DB), 7-day TTL, path `/auth`
+
+Refresh tokens are single-session per user: logging in on a new device invalidates the previous refresh token. Each call to `POST /auth/refresh` rotates the refresh token (new opaque value, new DB hash, new access token).
 
 ## Standard Success Response
 {
@@ -91,7 +93,29 @@ Response:
   }
 }
 
+POST /auth/refresh
+Request: no body. Must include the `refresh_token` cookie set by login/register/refresh.
+
+Response:
+{
+  "success": true,
+  "data": {
+    "user": {
+      "id": "uuid",
+      "email": "user@example.com",
+      "role": "admin"
+    }
+  }
+}
+
+On success, new `access_token` and `refresh_token` cookies are set (old refresh token is invalidated).
+
+Errors:
+- 401 INVALID_REFRESH_TOKEN — refresh cookie is missing, unknown, or expired.
+
 POST /auth/logout
+Request: no body.
+
 Response:
 {
   "success": true,
@@ -99,6 +123,8 @@ Response:
     "loggedOut": true
   }
 }
+
+Logout is idempotent. If a `refresh_token` cookie is present, its DB record is deleted. Both cookies are cleared on the response.
 
 ## TENANTS
 
