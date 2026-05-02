@@ -1,46 +1,109 @@
----
-alwaysApply: true
----
-You are the backend agent for HawkView.
+# HawkView backend — cursor rules
+# Always active. Read before every task.
 
-Follow AGENTS.md strictly.
+## Project
+NestJS monorepo at apps/api. PostgreSQL + Prisma. pnpm workspaces.
+This is a solo part-time project. Autonomous, careful progress is the goal.
 
-## Behavior Rules
+## Stack
+- Runtime: Node.js, NestJS (feature modules)
+- DB: PostgreSQL via Docker, Prisma ORM (client output: src/generated/prisma)
+- Auth: JWT in httpOnly cookies (access + refresh tokens)
+- Package manager: pnpm
+- Testing: Jest
+- API: REST, JSON responses shaped as { success: true, data: {} }
 
-- Always run setup checks first
-- Never start coding if setup is broken
-- Always propose a short plan before coding
-- Implement only one milestone at a time
-- Prefer small diffs over large changes
-- Do not guess — verify using commands
+## Folder layout
+apps/api/src/
+  auth/           # JWT auth, login, register, refresh, logout
+  users/          # User CRUD (Prisma only in service)
+  tenants/        # Connected M365 tenants
+  microsoft/      # Graph API client, OAuth flow
+  health/         # GET /health — always keep working
+  prisma/         # PrismaService (global singleton)
+  common/         # Shared filters, guards, decorators, utils
+  config/         # app.config.ts + env.validation.ts
+  generated/      # Prisma client output — never edit manually
 
-## Execution Loop
+## Architecture rules — non-negotiable
+- Controllers are thin: validate input, call service, return response. No business logic.
+- Services own all business logic. Prisma is only called inside services.
+- Never call PrismaService from a controller.
+- Every module imports only what it needs. No circular deps.
+- Multi-tenant safety: every DB query that touches tenant data MUST be scoped by tenantId.
+  Never return data across tenants. This is a hard security requirement.
+- Auth: JWT lives in httpOnly cookie named access_token. Never put tokens in response body.
+  Refresh token stored in DB (RefreshToken model), rotated on every use.
+- Env vars: always access via ConfigService, never process.env directly (except main.ts bootstrap).
 
-1. Verify environment
-2. Identify next milestone
-3. Break into steps
-4. Implement
-5. Add tests
-6. Run checks
-7. Summarize
+## Response format
+All endpoints return:
+  { success: true, data: { ... } }       # success
+  { success: false, code: 'ERROR_CODE', message: 'Human readable' }  # error
 
-## Validation Commands
+Error codes are SCREAMING_SNAKE_CASE strings. Use HttpException with this shape.
+Global exception filter (common/filters/api-exception.filter.ts) handles unhandled errors.
 
-- pnpm install
-- pnpm exec prisma migrate status
-- pnpm start:dev
-- curl http://localhost:3000/health
+## Prisma rules
+- Schema: apps/api/prisma/schema.prisma
+- Connection URL lives in apps/api/prisma.config.ts (Prisma 7 rejects
+  `url = env("DATABASE_URL")` in schema.prisma with P1012).
+- After any schema change: run migration, then regenerate client
+  pnpm --filter api prisma migrate dev --name <description>
+  pnpm --filter api prisma generate
+- Never edit src/generated/prisma manually.
 
-## Safety Rules
+## Current auth state (phase 1 complete)
+- POST /auth/register  — creates user, sets access_token + refresh_token cookies
+- POST /auth/login     — validates credentials, sets both cookies
+- GET  /auth/me        — returns current user (JwtAuthGuard)
+- POST /auth/refresh   — rotates refresh token, issues new access_token
+- POST /auth/logout    — revokes refresh token row, clears both cookies
+- 15-min access JWT, 7-day opaque refresh token (SHA-256 hash in DB,
+  single-session, rotation on use).
+- Global ThrottlerModule: 100 req/min default, 10 req/min on
+  /auth/login and /auth/register.
+- Swagger UI at /docs, OpenAPI JSON at /docs-json.
 
-- do not overwrite working modules blindly
-- do not change DB schema without migration
-- do not skip Prisma generate after schema change
+## Known issues to fix
+(none right now — all phase-1 blockers resolved)
 
-## Output Style
+## Coding rules
+- Small, focused changes only. One concern per PR/commit.
+- No massive refactors unless explicitly instructed.
+- No placeholder logic — if it's not implemented, don't commit it as if it is.
+- No console.log in committed code. Use NestJS Logger.
+- Always use async/await, never .then() chains.
+- DTOs use class-validator decorators. Always validate request bodies.
+- Types over any. No implicit any.
 
-Always include:
-- plan
-- files changed
-- validation results
-- next steps
+## Testing rules
+- Services: unit test with Jest + mocked PrismaService
+- Critical endpoints: e2e test with supertest
+- If skipping a test, add a comment explaining why and create a TODO
+- Run before every commit: pnpm --filter api test && pnpm --filter api build
+
+## Definition of done — a task is NOT done unless
+- [ ] pnpm --filter api build passes
+- [ ] pnpm --filter api test passes
+- [ ] No broken imports
+- [ ] Migrations applied + prisma generated (if schema changed)
+- [ ] Endpoint manually verified (curl or /docs Swagger UI)
+- [ ] No placeholder or commented-out logic committed
+
+## Setup verification (run if anything feels broken)
+pnpm install
+docker compose up -d        # starts postgres
+pnpm --filter api prisma migrate deploy
+pnpm --filter api prisma generate
+pnpm --filter api start:dev
+curl http://localhost:3000/health   # must return { status: 'ok' }
+
+## Commit format
+feat(scope): what was added
+fix(scope): what was fixed
+refactor(scope): what was restructured
+test(scope): what was tested
+chore(scope): tooling/config change
+
+Scopes: auth | users | tenants | microsoft | prisma | health | common | config

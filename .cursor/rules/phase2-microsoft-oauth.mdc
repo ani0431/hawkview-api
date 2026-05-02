@@ -1,0 +1,133 @@
+# HawkView phase 2 — Microsoft OAuth + tenant connection
+# Activate this rule when working on: microsoft/, tenants/, or any Graph API task.
+
+## Phase 2 goal
+Allow an MSP to connect a Microsoft 365 tenant to HawkView via OAuth admin consent.
+Store the connection securely. Verify it works. Nothing more yet.
+
+## What done looks like for phase 2
+- [ ] Tenant model in Prisma with encrypted token storage
+- [ ] GET  /microsoft/auth/url?tenantId=  → returns Azure consent URL
+- [ ] GET  /microsoft/auth/callback        → handles redirect, stores tokens
+- [ ] POST /tenants                        → create tenant record
+- [ ] GET  /tenants                        → list tenants for current user
+- [ ] GET  /tenants/:id                    → get single tenant
+- [ ] DELETE /tenants/:id                  → disconnect tenant
+- [ ] GET  /tenants/:id/status             → verify Graph API token is valid
+- [ ] GraphService.getClient(tenantId)     → returns authenticated Graph client
+
+## Prisma schema additions for phase 2
+Add to schema.prisma:
+
+model Tenant {
+  id           String    @id @default(uuid())
+  displayName  String
+  microsoftTenantId String @unique
+  userId       String
+  user         User      @relation(fields: [userId], references: [id])
+  accessToken  String    # encrypt at rest — see encryption rule below
+  refreshToken String    # encrypt at rest
+  tokenExpiresAt DateTime
+  scopes       String[]
+  connectedAt  DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  isActive     Boolean   @default(true)
+}
+
+Also add to User model:
+  tenants Tenant[]
+
+## Token encryption rule — CRITICAL
+Never store Microsoft OAuth tokens as plain text in the database.
+Use AES-256-GCM encryption via Node.js crypto module.
+Create: common/utils/crypto.util.ts with encrypt(text) and decrypt(text).
+Key comes from env var: ENCRYPTION_KEY (32-byte hex string).
+Add ENCRYPTION_KEY to env.validation.ts as required string.
+
+## Azure app registration requirements
+The HawkView app needs these API permissions (application permissions, not delegated):
+  - User.Read.All            (list users + MFA state)
+  - UserAuthenticationMethod.Read.All  (MFA methods per user)
+  - AuditLog.Read.All        (sign-in logs)
+  - Directory.Read.All       (tenant directory info)
+
+Admin consent is REQUIRED for all of these. The OAuth flow must use:
+  - response_type: code
+  - scope: https://graph.microsoft.com/.default
+  - prompt: admin_consent
+  - response_mode: query
+
+Env vars needed:
+  AZURE_CLIENT_ID=
+  AZURE_CLIENT_SECRET=
+  AZURE_REDIRECT_URI=http://localhost:3000/microsoft/auth/callback
+
+## Graph API client pattern
+// microsoft/graph.service.ts
+// getClient(tenantId) should:
+// 1. Load tenant from DB by tenantId
+// 2. Decrypt access token
+// 3. Check if expired — if yes, refresh using Microsoft token endpoint
+// 4. Save new tokens to DB (encrypted)
+// 5. Return a configured axios instance (or @microsoft/microsoft-graph-client)
+// Never make raw Graph API calls outside GraphService.
+
+## Microsoft OAuth token refresh
+Token endpoint: https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token
+Body: grant_type=refresh_token, refresh_token, client_id, client_secret, scope
+Store new access + refresh tokens (encrypted) back to DB on every refresh.
+If refresh fails (token revoked): set tenant.isActive = false, return 401 with code TENANT_AUTH_EXPIRED.
+
+## Multi-tenant isolation rules (repeat from backend.mdc — critical here)
+- Every tenant query MUST filter by userId (current JWT user) AND tenantId.
+- Never return a tenant record without verifying it belongs to req.user.id.
+- Pattern for all tenant service methods:
+  this.prisma.tenant.findFirstOrThrow({ where: { id: tenantId, userId: user.id } })
+  // throws if not found OR if it belongs to another user
+
+## Error codes for phase 2
+TENANT_NOT_FOUND          - tenant doesn't exist or doesn't belong to user
+TENANT_ALREADY_CONNECTED  - microsoftTenantId already registered
+TENANT_AUTH_EXPIRED       - MS refresh token invalid, user must reconnect
+OAUTH_STATE_MISMATCH      - CSRF check failed on callback
+OAUTH_EXCHANGE_FAILED     - code→token exchange with Microsoft failed
+
+## OAuth state / CSRF protection
+Generate a random state param before redirecting to Microsoft.
+Store it in a short-lived signed cookie or in-memory cache (Redis not needed yet — use NestJS CacheModule with memory store).
+Verify it matches on callback before exchanging the code.
+If mismatch: throw OAUTH_STATE_MISMATCH 400.
+
+## Testing phase 2
+Use a Microsoft 365 Developer Program tenant (free):
+  https://developer.microsoft.com/en-us/microsoft-365/dev-program
+Register the app at: https://portal.azure.com → App registrations
+Use Graph Explorer to verify permissions before coding:
+  https://developer.microsoft.com/en-us/graph/graph-explorer
+
+Mock GraphService in unit tests — never make real Graph API calls in tests.
+For e2e tests: mock the Microsoft token endpoint with nock or jest mocks.
+
+## Module structure for phase 2
+microsoft/
+  microsoft.module.ts       # imports TenantsModule
+  microsoft.controller.ts   # GET /microsoft/auth/url, GET /microsoft/auth/callback
+  microsoft.service.ts      # OAuth flow: build URL, exchange code, store tokens
+  graph.service.ts          # getClient(tenantId), wraps Graph API calls
+  dto/
+    connect-tenant.dto.ts   # { displayName: string }
+
+tenants/
+  tenants.module.ts
+  tenants.controller.ts     # CRUD + status endpoint
+  tenants.service.ts        # DB operations, always scoped to userId
+  dto/
+    create-tenant.dto.ts
+    tenant-response.dto.ts  # never expose raw tokens in responses
+
+## What NOT to build in phase 2
+- Do not pull Graph API data yet (users, MFA, audit logs) — that is phase 3
+- Do not build background sync jobs — phase 3
+- Do not build reporting endpoints — phase 4
+- Do not add multi-org support — future
+- Keep it to: connect, store, verify, list, disconnect
