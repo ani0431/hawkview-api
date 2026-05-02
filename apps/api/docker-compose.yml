@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:16
+    container_name: hawkview_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hawkview
+      POSTGRES_PASSWORD: hawkview_dev_password
+      POSTGRES_DB: hawkview
+    ports:
+      - "5432:5432"
+    volumes:
+      - hawkview_pgdata:/var/lib/postgresql/data
+
+volumes:
+  hawkview_pgdata:

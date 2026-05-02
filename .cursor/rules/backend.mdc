@@ -1,0 +1,46 @@
+---
+alwaysApply: true
+---
+You are the backend agent for HawkView.
+
+Follow AGENTS.md strictly.
+
+## Behavior Rules
+
+- Always run setup checks first
+- Never start coding if setup is broken
+- Always propose a short plan before coding
+- Implement only one milestone at a time
+- Prefer small diffs over large changes
+- Do not guess — verify using commands
+
+## Execution Loop
+
+1. Verify environment
+2. Identify next milestone
+3. Break into steps
+4. Implement
+5. Add tests
+6. Run checks
+7. Summarize
+
+## Validation Commands
+
+- pnpm install
+- pnpm exec prisma migrate status
+- pnpm start:dev
+- curl http://localhost:3000/health
+
+## Safety Rules
+
+- do not overwrite working modules blindly
+- do not change DB schema without migration
+- do not skip Prisma generate after schema change
+
+## Output Style
+
+Always include:
+- plan
+- files changed
+- validation results
+- next steps

@@ -1,0 +1,100 @@
+---
+description: NestJS backend architecture conventions and folder structure for the hawkview API.
+globs: apps/api/src/**/*.ts
+---
+
+# NestJS Architecture
+
+## Folder Structure
+
+```
+apps/api/src/
+├── main.ts                        # Bootstrap, global pipes/filters
+├── app.module.ts                  # Root module — imports all feature modules
+├── app.controller.ts              # Root-level routes only (/, etc.)
+├── app.service.ts
+│
+├── prisma/                        # Database layer (global)
+│   ├── prisma.module.ts
+│   └── prisma.service.ts
+│
+├── health/                        # Health check endpoint
+│   ├── health.module.ts
+│   └── health.controller.ts
+│
+├── auth/                          # Example feature module
+│   ├── auth.module.ts
+│   ├── auth.controller.ts
+│   ├── auth.service.ts
+│   ├── dto/
+│   │   ├── login.dto.ts
+│   │   └── register.dto.ts
+│   ├── guards/
+│   │   └── jwt-auth.guard.ts
+│   └── strategies/
+│       └── jwt.strategy.ts
+│
+├── users/                         # Example feature module
+│   ├── users.module.ts
+│   ├── users.controller.ts
+│   ├── users.service.ts
+│   └── dto/
+│       ├── create-user.dto.ts
+│       └── update-user.dto.ts
+│
+└── common/                        # Shared utilities
+    ├── decorators/
+    ├── filters/
+    ├── guards/
+    ├── interceptors/
+    ├── pipes/
+    └── dto/
+```
+
+## Conventions
+
+### Module Organisation
+- One folder per feature/domain (e.g. `users/`, `auth/`, `projects/`).
+- Each feature folder contains its own module, controller, service, DTOs, and guards.
+- `PrismaModule` is `@Global()` — never import it in feature modules, just inject `PrismaService`.
+
+### Naming
+- Files: `kebab-case` with suffix — `create-user.dto.ts`, `jwt-auth.guard.ts`.
+- Classes: `PascalCase` with suffix — `CreateUserDto`, `JwtAuthGuard`.
+- One class per file. Name the file after the class.
+
+### Controllers
+- Thin controllers — delegate logic to services.
+- Use DTOs with `class-validator` for request validation.
+- Use proper HTTP status codes via `@HttpCode()`.
+
+### Services
+- Business logic lives here.
+- Inject `PrismaService` for database access.
+- Throw NestJS `HttpException` subclasses for error responses.
+
+### DTOs
+- Place in a `dto/` subfolder within the feature.
+- Use `class-validator` decorators for validation.
+- Separate create/update DTOs (use `PartialType` for update).
+
+### Database (Prisma)
+- Schema lives at `prisma/schema.prisma`.
+- Config at `prisma.config.ts` (root of `apps/api`).
+- Generator uses `prisma-client` with `moduleFormat = "cjs"` for NestJS compatibility.
+- Import `PrismaClient` from `../generated/prisma/client.js`.
+- Use `@prisma/adapter-pg` driver adapter in `PrismaService` constructor.
+- Run migrations with `pnpm exec prisma migrate dev`.
+- After schema changes, run `pnpm exec prisma generate`.
+
+### Common / Shared Code
+- Reusable guards, pipes, filters, interceptors go in `src/common/`.
+- Only put things here if used by 2+ feature modules.
+
+### Environment
+- Use `dotenv` + `.env` at `apps/api/.env`.
+- Access via `process.env.VAR` or NestJS `ConfigModule` for typed config.
+
+### Testing
+- Unit tests colocated: `users.service.spec.ts` next to `users.service.ts`.
+- E2E tests in `test/` directory.

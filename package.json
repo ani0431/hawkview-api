@@ -1,0 +1,12 @@
+{
+    "name": "hawkview",
+    "private": true,
+    "version": "0.1.0",
+    "packageManager": "pnpm@9.6.0",
+    "scripts": {
+      "dev": "pnpm -C apps/api start:dev",
+      "build": "pnpm -C apps/api build",
+      "start": "pnpm -C apps/api start"
+    }
+  }
+  
