@@ -1,8 +1,8 @@
 {
   "name": "api",
   "version": "0.0.1",
-  "description": "",
-  "author": "",
+  "description": "HawkView backend API — NestJS service for Microsoft 365 tenant security posture.",
+  "author": "Aanchal <aanchal0431@users.noreply.github.com>",
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
