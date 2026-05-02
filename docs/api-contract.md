@@ -3,6 +3,22 @@
 ## Base URL
 http://localhost:3000
 
+## Interactive Docs
+Swagger UI at `GET /docs`. OpenAPI JSON at `GET /docs-json`.
+
+## Rate Limiting
+A global limiter allows 100 requests per minute per IP by default. `POST /auth/login` and `POST /auth/register` are tightened to 10 per minute per IP. Exceeding a limit returns:
+
+{
+  "success": false,
+  "error": {
+    "code": "RATE_LIMITED",
+    "message": "Too many requests. Please try again shortly."
+  }
+}
+
+with HTTP 429.
+
 ## Authentication Model
 HawkView uses cookie-based authentication with short-lived access tokens and rotating refresh tokens.
 

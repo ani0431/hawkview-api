@@ -39,6 +39,12 @@ export class ApiExceptionFilter implements ExceptionFilter {
         else if (status === HttpStatus.NOT_FOUND) code = 'NOT_FOUND';
         else if (status === HttpStatus.CONFLICT) code = 'CONFLICT';
         else if (status === HttpStatus.BAD_REQUEST) code = 'VALIDATION_ERROR';
+        else if (status === HttpStatus.TOO_MANY_REQUESTS) code = 'RATE_LIMITED';
+      }
+
+      if (status === HttpStatus.TOO_MANY_REQUESTS) {
+        code = 'RATE_LIMITED';
+        message = 'Too many requests. Please try again shortly.';
       }
 
       response.status(status).json({

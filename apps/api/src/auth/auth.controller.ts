@@ -10,6 +10,15 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import {
+  ApiCookieAuth,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+  ApiTooManyRequestsResponse,
+  ApiUnauthorizedResponse,
+} from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { AuthService, PublicUser } from './auth.service';
 import { LoginDto } from './dto/login.dto';
@@ -26,6 +35,7 @@ type AuthedRequest = Request & {
   user: PublicUser;
 };
 
+@ApiTags('auth')
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -35,6 +45,14 @@ export class AuthController {
 
   @Post('register')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ApiOperation({
+    summary: 'Register a new user and open a session',
+    description:
+      'Creates the user and sets httpOnly `access_token` (15 min, path `/`) and `refresh_token` (7 days, path `/auth`) cookies.',
+  })
+  @ApiOkResponse({ description: 'User created and session cookies set.' })
+  @ApiTooManyRequestsResponse({ description: 'Rate limit exceeded.' })
   async register(
     @Body() dto: RegisterDto,
     @Res({ passthrough: true }) res: Response,
@@ -46,6 +64,15 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ApiOperation({
+    summary: 'Log in and open a session',
+    description:
+      'Verifies credentials and sets httpOnly `access_token` + `refresh_token` cookies. Logging in on a new device invalidates the previous refresh token (single-session).',
+  })
+  @ApiOkResponse({ description: 'Credentials valid, session cookies set.' })
+  @ApiUnauthorizedResponse({ description: 'INVALID_CREDENTIALS.' })
+  @ApiTooManyRequestsResponse({ description: 'Rate limit exceeded.' })
   async login(
     @Body() dto: LoginDto,
     @Res({ passthrough: true }) res: Response,
@@ -57,6 +84,12 @@ export class AuthController {
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
+  @ApiCookieAuth('access_token')
+  @ApiOperation({ summary: 'Return the currently authenticated user' })
+  @ApiOkResponse({ description: 'Returns the current user.' })
+  @ApiUnauthorizedResponse({
+    description: 'UNAUTHORIZED — access token missing, invalid, or expired.',
+  })
   me(@Req() req: AuthedRequest) {
     const u = req.user;
     return {
@@ -67,6 +100,15 @@ export class AuthController {
 
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Rotate the refresh token and issue a new access token',
+    description:
+      'Requires the `refresh_token` cookie. Rotates the opaque refresh token in the DB (new hash, new expiry) and sets fresh `access_token` + `refresh_token` cookies.',
+  })
+  @ApiOkResponse({ description: 'Cookies rotated.' })
+  @ApiUnauthorizedResponse({
+    description: 'INVALID_REFRESH_TOKEN — cookie is missing, unknown, or expired.',
+  })
   async refresh(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
@@ -80,6 +122,12 @@ export class AuthController {
 
   @Post('logout')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'End the current session',
+    description:
+      'Idempotent. Deletes the refresh token row (if the cookie is present) and clears both auth cookies on the response.',
+  })
+  @ApiOkResponse({ description: 'Session ended and cookies cleared.' })
   async logout(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
