@@ -1,98 +1,98 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# HawkView API
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+NestJS backend for HawkView. Connects Microsoft 365 tenants via Graph API and surfaces security posture findings for MSPs.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Stack
+- NestJS 11
+- PostgreSQL (Docker) + Prisma 7
+- pnpm workspace
+- Jest for tests
+- JWT in httpOnly cookies (15-min access + 7-day rotating refresh)
+- Swagger UI at `/docs`
+- Rate limiting via `@nestjs/throttler` (100 req/min default, 10 req/min on `/auth/login` and `/auth/register`)
 
-## Description
-
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
-
-## Project setup
+## Quick start
 
 ```bash
-$ pnpm install
+# from repo root
+pnpm install
+docker compose -f apps/api/docker-compose.yml up -d   # starts hawkview_postgres
+pnpm --filter api exec prisma migrate deploy
+pnpm --filter api exec prisma generate
+pnpm --filter api start:dev
 ```
 
-## Compile and run the project
+Health check:
+```bash
+curl http://localhost:3000/health
+```
+
+Swagger UI: http://localhost:3000/docs
+
+## Environment
+
+Copy and set these in `apps/api/.env`:
+
+| Variable | Required | Default | Notes |
+|---|---|---|---|
+| `DATABASE_URL` | yes | — | Postgres connection string. Read by `prisma.config.ts`; do not put `url` in `schema.prisma` (Prisma 7 rejects it with P1012). |
+| `JWT_SECRET` | yes | — | Signing key for access JWTs. |
+| `NODE_ENV` | no | `development` | Sets cookie `secure` flag when `production`. |
+| `PORT` | no | `3000` | |
+| `JWT_ACCESS_TTL` | no | `15m` | Duration string (`15m`, `1h`, `30s`). |
+| `REFRESH_TOKEN_TTL_DAYS` | no | `7` | 1–90. |
+
+## Scripts
 
 ```bash
-# development
-$ pnpm run start
-
-# watch mode
-$ pnpm run start:dev
-
-# production mode
-$ pnpm run start:prod
+pnpm --filter api start:dev       # watch mode
+pnpm --filter api build           # tsc via nest build
+pnpm --filter api test            # jest unit tests
+pnpm --filter api test:e2e        # jest e2e (supertest)
+pnpm --filter api exec prisma migrate dev --name <desc>
+pnpm --filter api exec prisma generate
+pnpm --filter api exec prisma studio
 ```
 
-## Run tests
+## Architecture
 
-```bash
-# unit tests
-$ pnpm run test
+- Feature-based modules under `src/` (`auth`, `users`, `tenants`, `microsoft`, `health`).
+- Controllers stay thin — validation + delegation. Business logic lives in services.
+- Only services touch Prisma. `PrismaModule` is `@Global`.
+- All responses follow `{ success, data }` / `{ success: false, error: { code, message } }`.
+- Global `ApiExceptionFilter` maps every `HttpException` to this envelope.
+- See `docs/api-contract.md` for the full endpoint contract and `.cursor/rules/backend.mdc` for conventions.
 
-# e2e tests
-$ pnpm run test:e2e
+## Auth model
 
-# test coverage
-$ pnpm run test:cov
+- `POST /auth/register` — creates user, sets both cookies.
+- `POST /auth/login` — validates credentials, sets both cookies. Single-session: logging in on another device invalidates the previous refresh token.
+- `GET  /auth/me` — returns the current user (requires `access_token`).
+- `POST /auth/refresh` — rotates the refresh token (new opaque value, new DB hash, new `access_token`).
+- `POST /auth/logout` — deletes the refresh token row and clears both cookies.
+
+Cookies are `httpOnly`, `sameSite=lax`, and `secure` in production. Only SHA-256 hashes of refresh tokens are ever written to the database.
+
+## Project layout
+
 ```
-
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ pnpm install -g @nestjs/mau
-$ mau deploy
+apps/api/
+├── prisma/
+│   ├── schema.prisma
+│   └── migrations/
+├── prisma.config.ts           # DATABASE_URL wiring (Prisma 7)
+├── src/
+│   ├── main.ts                # bootstrap, Swagger, filters
+│   ├── app.module.ts          # ThrottlerModule + feature modules
+│   ├── auth/                  # auth.{controller,service,module}, dto/, guards/, strategies/
+│   ├── health/
+│   ├── prisma/                # PrismaService (global)
+│   ├── users/ tenants/ microsoft/
+│   ├── common/                # filters, guards, decorators, utils
+│   └── config/                # app.config.ts + env.validation.ts
+└── test/                      # e2e specs
 ```
-
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
 
 ## License
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+UNLICENSED — internal HawkView project.
