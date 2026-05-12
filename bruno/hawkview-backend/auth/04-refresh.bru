@@ -1,0 +1,41 @@
+meta {
+  name: 04 Refresh
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/auth/refresh
+  body: none
+  auth: none
+}
+
+docs {
+  Rotates the opaque refresh token in the DB (new hash, new expiry) and sets fresh
+  `access_token` + `refresh_token` cookies. The previous refresh token is invalidated.
+  
+  Requires the `refresh_token` cookie. After this runs, re-run `03 Me` to confirm the new
+  access token also works.
+  
+  Errors:
+  - 401 INVALID_REFRESH_TOKEN if the cookie is missing, unknown, or expired.
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("returns user envelope", function() {
+    const body = res.getBody();
+    expect(body.success).to.equal(true);
+    expect(body.data.user).to.have.property("id");
+    expect(body.data.user.email).to.equal(bru.getEnvVar("testEmail"));
+  });
+  
+  test("rotates both cookies", function() {
+    const setCookie = (res.getHeader("set-cookie") || []).join(";");
+    expect(setCookie).to.match(/access_token=/);
+    expect(setCookie).to.match(/refresh_token=/);
+  });
+}

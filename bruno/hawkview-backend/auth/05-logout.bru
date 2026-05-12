@@ -1,0 +1,40 @@
+meta {
+  name: 05 Logout
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/auth/logout
+  body: none
+  auth: none
+}
+
+docs {
+  Idempotent. Deletes the refresh token row (if the cookie is present) and clears both
+  auth cookies on the response.
+  
+  After this, running `03 Me` should return 401 UNAUTHORIZED and `04 Refresh` should
+  return 401 INVALID_REFRESH_TOKEN.
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("loggedOut envelope", function() {
+    const body = res.getBody();
+    expect(body.success).to.equal(true);
+    expect(body.data.loggedOut).to.equal(true);
+  });
+  
+  test("clears both auth cookies", function() {
+    const setCookie = (res.getHeader("set-cookie") || []).join("\n");
+    const lines = setCookie.split("\n");
+    const accessClear = lines.find(l => l.startsWith("access_token="));
+    const refreshClear = lines.find(l => l.startsWith("refresh_token="));
+    expect(accessClear).to.match(/Expires=|Max-Age=0/i);
+    expect(refreshClear).to.match(/Expires=|Max-Age=0/i);
+  });
+}

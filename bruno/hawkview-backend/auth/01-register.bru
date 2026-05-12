@@ -1,0 +1,58 @@
+meta {
+  name: 01 Register
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/auth/register
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "email": "{{testEmail}}",
+    "password": "{{testPassword}}"
+  }
+}
+
+docs {
+  Creates a new user and sets `access_token` + `refresh_token` cookies on the response.
+  
+  Re-running with the same email returns 409 EMAIL_ALREADY_EXISTS — that's expected on the
+  second pass. Just skip to `02 Login` afterwards.
+  
+  Rate limited to 10 req/min per IP.
+}
+
+tests {
+  test("status is 200 (first run) or 409 (already registered)", function() {
+    expect([200, 409]).to.include(res.getStatus());
+  });
+  
+  test("envelope shape", function() {
+    const body = res.getBody();
+    if (res.getStatus() === 200) {
+      expect(body.success).to.equal(true);
+      expect(body.data.user.email).to.equal(bru.getEnvVar("testEmail"));
+      expect(body.data.user).to.have.property("id");
+      expect(body.data.user).to.have.property("role");
+    } else {
+      expect(body.success).to.equal(false);
+      expect(body.error.code).to.equal("EMAIL_ALREADY_EXISTS");
+    }
+  });
+  
+  test("sets both auth cookies on success", function() {
+    if (res.getStatus() !== 200) return;
+    const setCookie = (res.getHeader("set-cookie") || []).join(";");
+    expect(setCookie).to.match(/access_token=/);
+    expect(setCookie).to.match(/refresh_token=/);
+    expect(setCookie).to.match(/HttpOnly/i);
+  });
+}

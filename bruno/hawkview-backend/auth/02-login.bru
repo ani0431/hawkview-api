@@ -1,0 +1,58 @@
+meta {
+  name: 02 Login
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/auth/login
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "email": "{{testEmail}}",
+    "password": "{{testPassword}}"
+  }
+}
+
+docs {
+  Verifies credentials and issues fresh `access_token` (15 min, path `/`) and
+  `refresh_token` (7 days, path `/auth`) cookies.
+  
+  Logging in again invalidates the previous refresh token (single-session).
+  Rate limited to 10 req/min per IP.
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("returns user envelope", function() {
+    const body = res.getBody();
+    expect(body.success).to.equal(true);
+    expect(body.data.user.email).to.equal(bru.getEnvVar("testEmail"));
+    expect(body.data.user).to.have.property("id");
+    expect(body.data.user).to.have.property("role");
+  });
+  
+  test("sets both auth cookies", function() {
+    const setCookie = (res.getHeader("set-cookie") || []).join(";");
+    expect(setCookie).to.match(/access_token=/);
+    expect(setCookie).to.match(/refresh_token=/);
+    expect(setCookie).to.match(/HttpOnly/i);
+    expect(setCookie).to.match(/SameSite=Lax/i);
+  });
+  
+  test("refresh cookie scoped to /auth", function() {
+    const setCookie = (res.getHeader("set-cookie") || []).join("\n");
+    const refreshLine = setCookie.split("\n").find(l => l.startsWith("refresh_token="));
+    expect(refreshLine).to.match(/Path=\/auth/);
+  });
+}

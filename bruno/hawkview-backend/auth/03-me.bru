@@ -1,0 +1,32 @@
+meta {
+  name: 03 Me
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/auth/me
+  auth: none
+}
+
+docs {
+  Returns the currently authenticated user. Requires the `access_token` cookie set by
+  `02 Login` (or any subsequent `04 Refresh`).
+  
+  Errors:
+  - 401 UNAUTHORIZED if the access cookie is missing/invalid/expired.
+}
+
+tests {
+  test("status is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("returns the logged-in user", function() {
+    const body = res.getBody();
+    expect(body.success).to.equal(true);
+    expect(body.data.user.email).to.equal(bru.getEnvVar("testEmail"));
+    expect(body.data.user).to.have.property("id");
+    expect(body.data.user).to.have.property("role");
+  });
+}
