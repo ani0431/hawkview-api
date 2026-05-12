@@ -16,6 +16,20 @@ model User {
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   refreshToken RefreshToken?
+  tenants      Tenant[]
+}
+
+model Tenant {
+  id                String   @id @default(uuid())
+  displayName       String
+  microsoftTenantId String
+  userId            String
+  user              User     @relation(fields: [userId], references: [id])
+  connectedAt       DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  isActive          Boolean  @default(true)
+
+  @@unique([microsoftTenantId, userId])
 }
 
 model RefreshToken {

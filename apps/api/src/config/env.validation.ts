@@ -33,6 +33,18 @@ class EnvironmentVariables {
   @IsOptional()
   @IsString()
   NODE_ENV?: string;
+
+  @IsNotEmpty()
+  @IsString()
+  AZURE_CLIENT_ID!: string;
+
+  @IsNotEmpty()
+  @IsString()
+  AZURE_CLIENT_SECRET!: string;
+
+  @IsNotEmpty()
+  @IsString()
+  AZURE_REDIRECT_URI!: string;
 }
 
 export function validateEnvironment(
