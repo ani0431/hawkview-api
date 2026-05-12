@@ -6,7 +6,13 @@
     "scripts": {
       "dev": "pnpm -C apps/api start:dev",
       "build": "pnpm -C apps/api build",
-      "start": "pnpm -C apps/api start"
+      "start": "pnpm -C apps/api start",
+      "test": "pnpm -C apps/api test",
+      "test:e2e": "pnpm -C apps/api test:e2e",
+      "prisma:studio": "pnpm -C apps/api prisma:studio",
+      "prisma:migrate": "pnpm -C apps/api prisma:migrate",
+      "prisma:generate": "pnpm -C apps/api prisma:generate",
+      "db:reset": "pnpm -C apps/api db:reset"
     }
   }
   
